@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# THis gets a list of chromecast devices and their IP addresses 
+
+avahi-browse --parsable --ignore-local --resolve --terminate _googlecast._tcp | awk '
+BEGIN { FS=";" }
+/md=Chromecast/{
+	if ( $1 == "=" && $3 == "IPv4" )
+		print "\"" $8 "\"" " " $10 ;
+}' | awk -F'"' '
+{
+	for(i=1;i<=NF;i++) {
+		if($i ~ /fn=/){
+			split($i, out, "=")
+			print $2 ":" out[2]
+		}
+	}
+}
+'
+
