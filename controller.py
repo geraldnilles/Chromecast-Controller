@@ -38,8 +38,8 @@ def volume(cast,args):
 def check_status(cast):
     rc = cast.socket_client.receiver_controller
     def cb_fun(status):
-        logging.debug("Current App: " + repr(rc.status.app_id))
-        logging.debug("Chromecast Status: " + repr(rc.status))
+        logging.info("Current App: " + repr(rc.status.app_id))
+        logging.info("Chromecast Status: " + repr(rc.status))
     rc.update_status(cb_fun)
         
 """
@@ -166,12 +166,12 @@ def find_devices():
     # Use the script from my "discovery" package to utilize the already-running
     # Avahi daemon to find devices rather than use the python Zeroconf library
     # (which is problematic)
-    for line in subprocess.check_output(["find_chromecasts"]).decode("utf-8").split("\n"):
+    for line in subprocess.check_output(["./find_chromecasts"]).decode("utf-8").split("\n"):
         if len(line) < 2:
             continue
         ip_address,name = line.split(":")
 
-        print(ip_address, name)
+        logging.debug(ip_address, name)
 
         info = pychromecast.dial.get_device_info(ip_address)
         host = (ip_address, None, info.uuid, info.model_name, info.friendly_name)
@@ -184,24 +184,22 @@ def find_devices():
 
 
 def main():
-    from multiprocessing.connection import Listener
     find_devices()
 
     with Listener(UNIX_SOCKET_PATH , authkey=b'secret password') as listener:
         while True:
-            # Set a 10s timeout and reset it each time a new message is recieved
-            signal.alarm(10)
+            # Set a 30s timeout and reset it each time a new message is recieved
+            signal.alarm(30)
             with listener.accept() as conn:
                 cmd = conn.recv()
                 logging.debug(repr(cmd))
-                c.parse_command(cmd)
+                parse_command(cmd)
                 conn.send("OK")
 
 
 # This is a function can be used by clients on other machines to send messages
 # to this controller
 def sendMsg(obj):
-    from multiprocessing.connection import Client
     with Client(UNIX_SOCKET_PATH , authkey=b'secret password') as conn:
         conn.send(obj) 
         resp = conn.recv()
