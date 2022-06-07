@@ -10,7 +10,7 @@ DEVICE_CACHE = {}
 UNIX_SOCKET_PATH = "/tmp/chromecast.socket"
 
 
-def volume(cast,args):
+def volume(conn,cast,args):
     rc = cast.socket_client.receiver_controller
     level = args[0]
 
@@ -33,13 +33,15 @@ def volume(cast,args):
 
     def cb_fun(status):
         logging.info("Volume now set to "+str(rc.status.volume_level))
+        conn.send(rc.status.volume_level)
     rc.update_status(cb_fun)
 
-def check_status(cast):
+def check_status(conn,cast):
     rc = cast.socket_client.receiver_controller
     def cb_fun(status):
         logging.info("Current App: " + repr(rc.status.app_id))
         logging.info("Chromecast Status: " + repr(rc.status))
+        conn.send(rc.status.app_id)
     rc.update_status(cb_fun)
         
 """
@@ -119,7 +121,9 @@ def check_status(cast):
 def stop(cast):
     cast.quit_app()
 
-def parse_command(msg):
+def parse_command(conn,msg):
+
+    wait = False
 
     device_name = msg[0]
     cmd = msg[1]
@@ -137,29 +141,35 @@ def parse_command(msg):
         logging.info("Reconnectig to Chromecast...")
         stop(cast)
         sys.exit(1)
-        return
 
-    if cmd == "stop":
+    elif cmd == "stop":
         logging.info("Stopping")
         stop(cast)
-        return
 
-    if cmd == "status":
+    elif cmd == "status":
         logging.debug("Checking Status")
-        check_status(cast)
-        return
+        wait=True
+        check_status(conn,cast)
 
-    if cmd == "volume":
+    elif cmd == "volume":
         logging.info("Adjusting Volume")
-        volume(cast,args) 
-        return
+        wait=True
+        volume(conn,cast,args) 
 
-    if cmd == "show":
+    elif cmd == "show":
         logging.info("Starting a Show")
         show(cast,args) 
         return
+    else:
+        logging.error("Invalid Command")
 
-    logging.error("Invalid Command")
+    # If 'wait' is set, wait for all the callbacks to finish before continuing
+    if wait:
+        while len(cast.socket_client._request_callbacks.values()) > 0:
+            next(iter(cast.socket_client._request_callbacks.values()))["event"].wait()
+    else:
+        # If no "wait", it is assumed that no data is being sent back, so we will send back an arbitary "OK"
+        conn.send("OK")
 
 def find_devices():
 
@@ -193,8 +203,7 @@ def main():
             with listener.accept() as conn:
                 cmd = conn.recv()
                 logging.debug(repr(cmd))
-                parse_command(cmd)
-                conn.send("OK")
+                parse_command(conn,cmd)
 
 
 # This is a function can be used by clients on other machines to send messages
