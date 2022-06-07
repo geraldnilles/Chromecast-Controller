@@ -12,35 +12,40 @@ UNIX_SOCKET_PATH = "/tmp/chromecast.socket"
 
 def volume(conn,cast,args):
     rc = cast.socket_client.receiver_controller
-    level = args[0]
 
-    prev = rc.status.volume_level
-
-    # Special Cases: 1 will be mean step volume down 5%.  
-    #                2 will mean volume up 5%
-    #                Anything else will be interpreted as a percentage
-
-    if (level == 1):
-        # Down 5%
-        level = prev - 0.05
-    elif (level == 2):
-        # Up 5%
-        level = prev + 0.05
-    else:
-        level = level/100.0
-        
-    rc.set_volume(level)
-
-    def cb_fun(status):
-        logging.info("Volume now set to "+str(rc.status.volume_level))
+    # THis callback will repot the final volume level
+    def cb_done(status):
+        logging.debug("Volume now set to "+str(rc.status.volume_level))
         conn.send(rc.status.volume_level)
-    rc.update_status(cb_fun)
+
+    # This call back will get the inital volume level
+    def cb_init(status):
+        prev = rc.status.volume_level
+        level = args[0]
+
+        # Special Cases: 1 will be mean step volume down 5%.  
+        #                2 will mean volume up 5%
+        #                Anything else will be interpreted as a percentage (0 to 100)
+
+        if (level == 1):
+            # Down 5%
+            level = prev - 0.05
+        elif (level == 2):
+            # Up 5%
+            level = prev + 0.05
+        else:
+            level = level/100.0
+        
+        rc.set_volume(level)
+        rc.update_status(cb_done)
+
+    rc.update_status(cb_init)
 
 def check_status(conn,cast):
     rc = cast.socket_client.receiver_controller
     def cb_fun(status):
         logging.info("Current App: " + repr(rc.status.app_id))
-        logging.info("Chromecast Status: " + repr(rc.status))
+        logging.debug("Chromecast Status: " + repr(rc.status))
         conn.send(rc.status.app_id)
     rc.update_status(cb_fun)
         
@@ -118,6 +123,16 @@ def check_status(conn,cast):
                 time.sleep(2)
 """
 
+def play(conn,cast,args):
+    rc = cast.socket_client.receiver_controller
+    mc = cast.media_controller
+    url = args[0]
+    mime = args[1]
+
+    mc.play_media(url,mime)
+
+# TODO Add Fast forward and Rewind commands
+
 def stop(cast):
     cast.quit_app()
 
@@ -138,9 +153,13 @@ def parse_command(conn,msg):
 
         
     if cmd == "reset":
-        logging.info("Reconnectig to Chromecast...")
+        logging.info("Closing the controller")
         stop(cast)
         sys.exit(1)
+
+    elif cmd == "find":
+        logging.info("Looking for new Chromecasts")
+        find_devices()
 
     elif cmd == "stop":
         logging.info("Stopping")
@@ -159,7 +178,6 @@ def parse_command(conn,msg):
     elif cmd == "show":
         logging.info("Starting a Show")
         show(cast,args) 
-        return
     else:
         logging.error("Invalid Command")
 
@@ -167,6 +185,9 @@ def parse_command(conn,msg):
     if wait:
         while len(cast.socket_client._request_callbacks.values()) > 0:
             next(iter(cast.socket_client._request_callbacks.values()))["event"].wait()
+        # Wait a extra beat for socket responses
+        # TODO Replace this with a more elegant solution (semaphore?)
+        time.sleep(0.1)
     else:
         # If no "wait", it is assumed that no data is being sent back, so we will send back an arbitary "OK"
         conn.send("OK")
