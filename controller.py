@@ -18,7 +18,7 @@ def volume(conn,cast,args):
     # THis callback will repot the final volume level
     def cb_done(status):
         logging.debug("Volume now set to "+str(rc.status.volume_level))
-        sendMsg(conn,[rc.status.volume_level])
+        sendMsg(conn,rc.status.volume_level)
 
     # This call back will get the inital volume level
     def cb_init(status):
@@ -48,7 +48,7 @@ def check_status(conn,cast):
     def cb_fun(status):
         logging.info("Current App: " + repr(rc.status.app_id))
         logging.debug("Chromecast Status: " + repr(rc.status))
-        sendMsg(conn,[rc.status.app_id])
+        sendMsg(conn,rc.status.app_id)
     rc.update_status(cb_fun)
         
 """
@@ -193,7 +193,7 @@ def parse_command(conn,msg):
 
     else:
         # If no "wait", it is assumed that no data is being sent back, so we will send back an arbitary "OK"
-        sendMsg(conn,["OK"])
+        sendMsg(conn,"OK")
 
 def find_devices():
 
