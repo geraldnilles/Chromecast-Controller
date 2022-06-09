@@ -1,0 +1,7 @@
+[Unit]
+Description=Chromecast Controller Service
+
+[Service]
+Type=simple
+ExecStart=/opt/Chromecast-Controller/controller.py
+

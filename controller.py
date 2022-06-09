@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 
-from multiprocessing.connection import Listener, Client
+import socket
+import stuct
+import json
 
 # Local cache of Chromecast devices.  THis should mitigate the need to
 # re-discover devices every time a command is sent 
@@ -16,7 +18,7 @@ def volume(conn,cast,args):
     # THis callback will repot the final volume level
     def cb_done(status):
         logging.debug("Volume now set to "+str(rc.status.volume_level))
-        conn.send(rc.status.volume_level)
+        sendMsg(conn,[rc.status.volume_level])
 
     # This call back will get the inital volume level
     def cb_init(status):
@@ -46,7 +48,7 @@ def check_status(conn,cast):
     def cb_fun(status):
         logging.info("Current App: " + repr(rc.status.app_id))
         logging.debug("Chromecast Status: " + repr(rc.status))
-        conn.send(rc.status.app_id)
+        sendMsg(conn,[rc.status.app_id])
     rc.update_status(cb_fun)
         
 """
@@ -137,7 +139,8 @@ def stop(cast):
     cast.quit_app()
 
 def parse_command(conn,msg):
-
+    # Set this bit to True if one of the callback functions is expected to
+    # respond.
     wait = False
 
     device_name = msg[0]
@@ -148,7 +151,7 @@ def parse_command(conn,msg):
         cast = pychromecast.get_chromecast_from_host(DEVICE_CACHE[device_name])
         cast.wait()
     else:
-        logging.error("Device Not Found")
+        logging.error("Requested Device Not Found")
         return
 
         
@@ -185,19 +188,19 @@ def parse_command(conn,msg):
     if wait:
         while len(cast.socket_client._request_callbacks.values()) > 0:
             next(iter(cast.socket_client._request_callbacks.values()))["event"].wait()
-        # Wait a extra beat for socket responses
-        # TODO Replace this with a more elegant solution (semaphore?)
-        time.sleep(0.1)
+            # Wait a extra beat for socket responses
+            time.sleep(0.1)
+
     else:
         # If no "wait", it is assumed that no data is being sent back, so we will send back an arbitary "OK"
-        conn.send("OK")
+        sendMsg(conn,["OK"])
 
 def find_devices():
 
     # Use the script from my "discovery" package to utilize the already-running
     # Avahi daemon to find devices rather than use the python Zeroconf library
     # (which is problematic)
-    for line in subprocess.check_output(["./find_chromecasts"]).decode("utf-8").split("\n"):
+    for line in subprocess.check_output(["find_chromecasts"]).decode("utf-8").split("\n"):
         if len(line) < 2:
             continue
         ip_address,name = line.split(":")
@@ -214,37 +217,56 @@ def find_devices():
         DEVICE_CACHE[name] = host
 
 
-def main():
+
+def server(fd):
+    # Populate the Device Cache with Avahi data
     find_devices()
 
-    with Listener(UNIX_SOCKET_PATH , authkey=b'secret password') as listener:
+    # Server will stop itself after 10s of inactivity
+    s = socket.socket(fileno=fd)
+    s.settimeout(10)
+
+    try:
         while True:
-            # Set a 30s timeout and reset it each time a new message is recieved
-            signal.alarm(30)
-            with listener.accept() as conn:
-                cmd = conn.recv()
-                logging.debug(repr(cmd))
-                parse_command(conn,cmd)
+            conn = s.accept()[0]
+            obj = recvMsg(conn)
+            print(obj)
+            logging.debug(repr(obj))
+            parse_command(conn,obj)
 
+    except TimeoutError:
+        return
 
-# This is a function can be used by clients on other machines to send messages
-# to this controller
-def sendMsg(obj):
-    with Client(UNIX_SOCKET_PATH , authkey=b'secret password') as conn:
-        conn.send(obj) 
-        resp = conn.recv()
-        return resp
+def client(obj):
+    # Create and connect to a Unix socket
+    sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    sock.connect(UNIX_SOCKET_PATH)
 
-    
-def alarm_handler(signum, frame):
-    print("Timeout")
-    sys.exit()
+    resp = sendRecvMsg(sock,obj)
+    # TODO Close or detach?
+    return resp
+
+def recvMsg(conn):
+    # Header is fixed 4 bytes
+    header = conn.recv(4)
+    msg_size = struct.unpack(">I",header)[0]
+    body = conn.recv(msg_size)
+    return json.loads(body)
+
+def sendMsg(conn,obj):
+    body = bytes(json.dumps(obj),"utf-8")
+    header = struct.pack(">I",len(body))
+    conn.sendall(header+body)
+
+def sendRecvMsg(conn,obj):
+    sendMsg(conn,obj)
+    return recvMsg(conn)
+
 
 if __name__ == "__main__":
     # Most of these are only needed by the server so importing is done in the
     # main function to reduce memory impact for the clients.
 
-    import signal
     import sys
     import pychromecast
 
@@ -252,13 +274,14 @@ if __name__ == "__main__":
     import os
     import random
     import logging
-    import socket
     import subprocess
     logging.basicConfig(format='%(asctime)s : %(levelname)s : %(message)s', level=logging.INFO)
 
-    signal.signal(signal.SIGALRM, alarm_handler)
-
-    main()
-
+    # Check for the Systemd Socket fileno and start a server if one exists
+    from systemd.daemon import listen_fds
+    fds = listen_fds()
+    print(fds)
+    if len(fds) > 0:
+        server(fds[0])
 
 

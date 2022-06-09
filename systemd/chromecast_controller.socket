@@ -1,0 +1,9 @@
+[Unit]
+Description = Chromecast Controller Socket
+
+[Socket] 
+ListenStream = /run/chromecast.socket
+
+[Install] 
+WantedBy = sockets.target
+
