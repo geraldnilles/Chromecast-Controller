@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 import socket
-import stuct
+import struct
 import json
 
 # Local cache of Chromecast devices.  THis should mitigate the need to
@@ -9,7 +9,7 @@ import json
 DEVICE_CACHE = {}
 
 # Socket Path.  This will be manaaged by a Systemd socket unit
-UNIX_SOCKET_PATH = "/tmp/chromecast.socket"
+UNIX_SOCKET_PATH = "/run/chromecast.socket"
 
 
 def volume(conn,cast,args):

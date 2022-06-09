@@ -1,11 +1,13 @@
 import controller
 import time
 
-for x in range(3):
+for x in range(1):
     a=time.time()
     print(controller.client(["Bedroom TV","status"]))
     b=time.time()
     print(a-b)
+
+exit()
 
 for x in range(3):
     a=time.time()
