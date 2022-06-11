@@ -3,6 +3,8 @@
 import socket
 import struct
 import json
+from enum import IntEnum, auto
+
 
 # Local cache of Chromecast devices.  THis should mitigate the need to
 # re-discover devices every time a command is sent 
@@ -11,8 +13,20 @@ DEVICE_CACHE = {}
 # Socket Path.  This will be manaaged by a Systemd socket unit
 UNIX_SOCKET_PATH = "/run/chromecast.socket"
 
+class Command(IntEnum):
+    play = auto()
+    stop = auto()
+    skip = auto()
+    status = auto()
+    volume = auto()
+    reset = auto()
+    find_devs = auto()
+    list_devs = auto()
+    queue_next = auto()
+    queue_prev = auto()
 
 def volume(conn,cast,args):
+    logging.info("Adjusting Volume")
     rc = cast.socket_client.receiver_controller
 
     # THis callback will repot the final volume level
@@ -22,6 +36,7 @@ def volume(conn,cast,args):
 
     # This call back will get the inital volume level
     def cb_init(status):
+        logging.debug("Volume initially set to to "+str(rc.status.volume_level))
         prev = rc.status.volume_level
         level = args[0]
 
@@ -42,160 +57,212 @@ def volume(conn,cast,args):
         rc.update_status(cb_done)
 
     rc.update_status(cb_init)
+    return True
 
-def check_status(conn,cast):
+def queue_next(conn,cast,args):
+    """
+    Jumps to the next video in the queue
+    """
+    logging.info("Jumping to Next Video")
+    mc = cast.media_controller.queue_next()
+
+def queue_prev(conn,cast,args):
+    """
+    Jumps to the previous video in the queue
+    """
+    logging.info("Jumping to Previous Video")
+    mc = cast.media_controller.queue_prev()
+
+def skip(conn,cast,args):
+    logging.info("Skipping Video")
+    rc = cast.socket_client.receiver_controller
+    mc = cast.media_controller
+    
+    # THis callback will repot the final volume level
+    def cb_done(status):
+        logging.debug("Video position now at "+str(mc.status.current_time))
+        sendMsg(conn,mc.status.current_time)
+
+    # This call back will get the inital volume level
+    def cb_init(status):
+        logging.debug("Video position initially at "+str(cc.status.current_time))
+        prev = mc.status.current_time
+        delta_time = args[0]
+
+        mc.seek(prev+delta_time)
+        mc.update_status(cb_done)
+
+    mc.update_status(cb_init)
+    return True
+
+def check_status(conn,cast,args):
+    logging.info("Checking Status")
     rc = cast.socket_client.receiver_controller
     def cb_fun(status):
         logging.info("Current App: " + repr(rc.status.app_id))
         logging.debug("Chromecast Status: " + repr(rc.status))
         sendMsg(conn,rc.status.app_id)
     rc.update_status(cb_fun)
-        
+    return True
+
 """
-    def show(self,name, num):
-        rc = self.device.socket_client.receiver_controller
+def show(conn,cast,args):
+    # Name of TV Show to start
+    name = args[0]
+    num = args[1]
+    rc = self.device.socket_client.receiver_controller
 
 
-        # If status is not set, abort and let the user try again
-        # This is done to avoid an error while we wait for the system to recover
-        # Idealy, id use the status callback function to send the show when ready
-        if rc.status == None:
-            logging.warning("Status Not Set.  Bailing")
-            self.check_status()
-            return
-            
-        # If Backdrop is the current app, the TV is likely off.  Temporarily
-        # launch the media reciever in order to wake up the TV before launching
-        # the show
-        if rc.status.app_id == pychromecast.config.APP_BACKDROP:
-            rc.launch_app(pychromecast.config.APP_MEDIA_RECEIVER)
-            time.sleep(15)
+    # If status is not set, abort and let the user try again
+    # This is done to avoid an error while we wait for the system to recover
+    # Idealy, id use the status callback function to send the show when ready
+    if rc.status == None:
+        logging.warning("Status Not Set.  Bailing")
+        self.check_status()
+        return
         
-        # Quit the current app before starting the show
-        self.device.quit_app()
-        time.sleep(5)
+    # If Backdrop is the current app, the TV is likely off.  Temporarily
+    # launch the media reciever in order to wake up the TV before launching
+    # the show
+    if rc.status.app_id == pychromecast.config.APP_BACKDROP:
+        rc.launch_app(pychromecast.config.APP_MEDIA_RECEIVER)
+        time.sleep(15)
+    
+    # Quit the current app before starting the show
+    self.device.quit_app()
+    time.sleep(5)
 
-        logging.info("Playing "+ str(name))
-        mc = self.device.media_controller
+    logging.info("Playing "+ str(name))
+    mc = self.device.media_controller
 
-        # Get the aboslute path
-        lib_path = os.path.abspath(
-            # Jump back 1 directory and into the selcted show folder
-            os.path.join(
-                # Strip out the basename
-                os.path.dirname(
-                    # Path of current file
-                    os.path.abspath(__file__)
-                )
-            ,"..","library",name )
+    # Get the aboslute path
+    lib_path = os.path.abspath(
+        # Jump back 1 directory and into the selcted show folder
+        os.path.join(
+            # Strip out the basename
+            os.path.dirname(
+                # Path of current file
+                os.path.abspath(__file__)
             )
-        try:
-            eps = sorted(os.listdir(lib_path))
-        except:
-            print("Show was not found")
-            eps = []
+        ,"..","library",name )
+        )
+    try:
+        eps = sorted(os.listdir(lib_path))
+    except:
+        print("Show was not found")
+        eps = []
 
-        # TODO Sort the episodes by name
+    # TODO Sort the episodes by name
 
 
-        # If number of library episodes is more than "num", then randomly
-        # select a chunk of sequential episodes
-        if len(eps) > num:
-            i = random.randrange(len(eps)-num+1)
-            sel = eps[i:i+num]
+    # If number of library episodes is more than "num", then randomly
+    # select a chunk of sequential episodes
+    if len(eps) > num:
+        i = random.randrange(len(eps)-num+1)
+        sel = eps[i:i+num]
+    else:
+        #If not, select the entire epsidoe list
+        sel = eps
+
+    # We want the first video to be nromal. and all subsequent videos be
+    # enqueued
+    # TODO Dynamically look up the local IP address
+    enqueue = False
+    for e in sel:
+        if enqueue:
+            logging.info ("Queueing up "+e)
+            mc.play_media("http://"+socket.gethostname()+".lan:8080/library/"+name+"/"+e,
+                            'video/mp4', enqueue=enqueue)
         else:
-            #If not, select the entire epsidoe list
-            sel = eps
-
-        # We want the first video to be nromal. and all subsequent videos be
-        # enqueued
-        # TODO Dynamically look up the local IP address
-        enqueue = False
-        for e in sel:
-            if enqueue:
-                logging.info ("Queueing up "+e)
-                mc.play_media("http://"+socket.gethostname()+".lan:8080/library/"+name+"/"+e,
-                                'video/mp4', enqueue=enqueue)
-            else:
-                logging.info ("Starting with "+e)
-                mc.play_media("http://"+socket.gethostname()+".lan:8080/library/"+name+"/"+e,
-                                'video/mp4', enqueue=enqueue)
-                mc.block_until_active(10)
-                enqueue = True
-                time.sleep(2)
+            logging.info ("Starting with "+e)
+            mc.play_media("http://"+socket.gethostname()+".lan:8080/library/"+name+"/"+e,
+                            'video/mp4', enqueue=enqueue)
+            mc.block_until_active(10)
+            enqueue = True
+            time.sleep(2)
 """
 
 def play(conn,cast,args):
     rc = cast.socket_client.receiver_controller
     mc = cast.media_controller
-    url = args[0]
-    mime = args[1]
+    if len(args > 0:
+        url = args[0]
+        logging.info("Playing a video:",url)
+    else:
+        logging.error("Invalid Command: URL not provided")
+        sendMsg(conn,"OK")
+        
+    if len(args > 1):
+        mime = args[1]
+    else:
+        mime = "video/mp4"
 
-    mc.play_media(url,mime)
+    logging.debug("MIME set to:",mime)
+    if len(args) > 2:
+        enqueue = args[2]
+        logging.debug("Video being enqueued to the end")
+    else:
+        enqueue = False
 
-# TODO Add Fast forward and Rewind commands
+    def cb_fun(status):
+        logging.debug("Playback Request Complete")
+        sendMsg(conn,"OK")
 
-def stop(cast):
+    mc.play_media(url,mime, callback_function=cb_fun )
+    return True
+
+
+def stop(conn,cast,args):
     cast.quit_app()
+    return False
 
 def parse_command(conn,msg):
-    # Set this bit to True if one of the callback functions is expected to
-    # respond.
-    wait = False
 
-    device_name = msg[0]
-    cmd = msg[1]
-    args = msg[2:]
-
-    if device_name in DEVICE_CACHE:
+    if msg["device"] in DEVICE_CACHE:
         cast = pychromecast.get_chromecast_from_host(DEVICE_CACHE[device_name])
         cast.wait()
     else:
         logging.error("Requested Device Not Found")
         return
 
-        
-    if cmd == "reset":
-        logging.info("Closing the controller")
-        stop(cast)
-        sys.exit(1)
-
-    elif cmd == "find":
-        logging.info("Looking for new Chromecasts")
-        find_devices()
-
-    elif cmd == "stop":
-        logging.info("Stopping")
-        stop(cast)
-
-    elif cmd == "status":
-        logging.debug("Checking Status")
-        wait=True
-        check_status(conn,cast)
-
-    elif cmd == "volume":
-        logging.info("Adjusting Volume")
-        wait=True
-        volume(conn,cast,args) 
-
-    elif cmd == "show":
-        logging.info("Starting a Show")
-        show(cast,args) 
-    else:
+    # Run the appropriate function
+    if msg["command"] not in Commands:
         logging.error("Invalid Command")
+        wait = False
+    else:
+        args = []
+        if "args" in msg:
+            args = msg["args"]
+        wait = FunctionMap.table[msg["command"]](conn,cast,args) 
 
     # If 'wait' is set, wait for all the callbacks to finish before continuing
     if wait:
         while len(cast.socket_client._request_callbacks.values()) > 0:
             next(iter(cast.socket_client._request_callbacks.values()))["event"].wait()
             # Wait a extra beat for socket responses
+            # TODO See if this can be removed with the new socket activation architecture
             time.sleep(0.1)
 
     else:
-        # If no "wait", it is assumed that no data is being sent back, so we will send back an arbitary "OK"
+        # If wait is not set, respond with a generic "OK" without waiting
         sendMsg(conn,"OK")
 
-def find_devices():
+def list_devices(conn,cast,args):
+    """
+    List devices from the cache without attempting to find new devices
+    """
+    sendMsg(conn, list(DEVICE_CACHE.keys()))
+    # Return True since this function is generating a custom response.
+    return True
+
+def find_devices(conn=None,cast=None,args=None):
+    """
+    Uses Avahi to find chromecast devices and populates a local cache
+    dictionary.
+
+    The optional arguments are use in the event this is called from the
+    parse_command() function
+    """
 
     # Use the script from my "discovery" package to utilize the already-running
     # Avahi daemon to find devices rather than use the python Zeroconf library
@@ -216,7 +283,9 @@ def find_devices():
         # actual connection in the cache as well
         DEVICE_CACHE[name] = host
 
-
+    # If conn is not None, it was called from a webapp, so we wil respond with a list of device names
+    if conn:
+        return list_devices(conn,cast,args)
 
 def server(fd):
     # Populate the Device Cache with Avahi data
@@ -262,6 +331,19 @@ def sendRecvMsg(conn,obj):
     sendMsg(conn,obj)
     return recvMsg(conn)
 
+# Builts a Lookup Table that maps enum values to their handler function
+class FunctionMap: 
+    table = {}
+    table[Command.play] = play
+    table[Command.stop] = stop
+    table[Command.skip] = skip
+    table[Command.status] = status
+    table[Command.volume] = volume
+    table[Command.reset] = reset
+    table[Command.find_devs] = find_devices
+    table[Command.list_devs] = list_devices
+    table[Command.queue_next] = queue_next 
+    table[Command.queue_prev] = queue_prev
 
 if __name__ == "__main__":
     # Most of these are only needed by the server so importing is done in the
