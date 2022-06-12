@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-import castcontroller
+import castcontroller as controller
 import time
 
 cmds = controller.Command
