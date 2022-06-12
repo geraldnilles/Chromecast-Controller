@@ -129,7 +129,7 @@ def play(conn,cast,args):
     mc = cast.media_controller
     if len(args) > 0:
         url = args[0]
-        logging.info("Playing a video:",url)
+        logging.info("Playing a video: "+url)
     else:
         logging.error("Invalid Command: URL not provided")
         sendMsg(conn,"OK")
@@ -139,7 +139,7 @@ def play(conn,cast,args):
     else:
         mime = "video/mp4"
 
-    logging.debug("MIME set to:",mime)
+    logging.debug("MIME set to: "+mime)
     if len(args) > 2:
         enqueue = args[2]
         logging.debug("Video being enqueued to the end")
