@@ -218,17 +218,30 @@ def stop(conn,cast,args):
 
 def parse_command(conn,msg):
 
-    if msg["device"] in DEVICE_CACHE:
-        cast = pychromecast.get_chromecast_from_host(DEVICE_CACHE[device_name])
-        cast.wait()
-    else:
-        logging.error("Requested Device Not Found")
+    if "command" not in msg:
+        logging.error("No Command Provided")
+        sendMsg(conn,"Error: No Command Provided")
         return
+
+
+    # If a device name was provided, make sure it is included in the cache
+    if "device" in msg:
+        if msg["device"] in DEVICE_CACHE:
+            cast = pychromecast.get_chromecast_from_host(DEVICE_CACHE[device_name])
+            cast.wait()
+        else:
+            logging.error("Requested Device Not Found")
+            sendMsg(conn,"Error: Device not found")
+            return
+
+    else:
+        cast = None
 
     # Run the appropriate function
     if msg["command"] not in Commands:
         logging.error("Invalid Command")
-        wait = False
+        sendMsg(conn,"Error: Invalid Command")
+        return
     else:
         args = []
         if "args" in msg:
@@ -283,7 +296,8 @@ def find_devices(conn=None,cast=None,args=None):
         # actual connection in the cache as well
         DEVICE_CACHE[name] = host
 
-    # If conn is not None, it was called from a webapp, so we wil respond with a list of device names
+    # If conn is not None, it was called from a webapp, so we wil respond with
+    # a list of device names
     if conn:
         return list_devices(conn,cast,args)
 
