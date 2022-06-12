@@ -17,6 +17,7 @@ class Command(IntEnum):
     play = auto()
     stop = auto()
     skip = auto()
+    seek = auto()
     status = auto()
     volume = auto()
     reset = auto()
@@ -108,6 +109,26 @@ def skip(conn,cast,args):
         delta_time = args[0]
 
         mc.seek(prev+delta_time)
+        mc.update_status(cb_done)
+
+    mc.update_status(cb_init)
+    return True
+
+def seek(conn,cast,args):
+    logging.info("Seeking the Video")
+    rc = cast.socket_client.receiver_controller
+    mc = cast.media_controller
+    
+    # THis callback will repot the final volume level
+    def cb_done(status):
+        logging.debug("Video position now at "+str(mc.status.current_time))
+        sendMsg(conn,mc.status.current_time)
+
+    # This call back will get the inital volume level
+    def cb_init(status):
+        logging.debug("Video position initially at "+str(mc.status.current_time))
+
+        mc.seek(args[0])
         mc.update_status(cb_done)
 
     mc.update_status(cb_init)
@@ -300,6 +321,7 @@ class FunctionMap:
     table[Command.play] = play
     table[Command.stop] = stop
     table[Command.skip] = skip
+    table[Command.seek] = seek
     table[Command.status] = check_status
     table[Command.volume] = volume
     table[Command.reset] = reset
