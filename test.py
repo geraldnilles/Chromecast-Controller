@@ -9,8 +9,7 @@ print(controller.client({
 
 print(controller.client({
     "device":"Bedroom TV",
-    "cmd":cmds.volume,
-    "args":[0.5]
+    "cmd":cmds.stop,
     }))
 
 time.sleep(5)
@@ -51,7 +50,7 @@ for x in range(3):
 print(controller.client({
     "device":"Bedroom TV",
     "cmd":cmds.volume,
-    "args":[0.5]
+    "args":[50]
     }))
 
 # Start playing a video

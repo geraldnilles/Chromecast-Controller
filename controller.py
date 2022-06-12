@@ -64,14 +64,30 @@ def queue_next(conn,cast,args):
     Jumps to the next video in the queue
     """
     logging.info("Jumping to Next Video")
-    mc = cast.media_controller.queue_next()
+    mc = cast.media_controller
+
+    def cb_func(status):
+        mc.queue_next()
+        print(mc.status)
+        conn.sendMsg("OK")
+
+    mc.update_status(cb_func)
+    return True
 
 def queue_prev(conn,cast,args):
     """
     Jumps to the previous video in the queue
     """
     logging.info("Jumping to Previous Video")
-    mc = cast.media_controller.queue_prev()
+    mc = cast.media_controller
+
+    def cb_func(status):
+        mc.queue_prev()
+        print(mc.status)
+        conn.sendMsg("OK")
+
+    mc.update_status(cb_func)
+    return True
 
 def skip(conn,cast,args):
     logging.info("Skipping Video")
