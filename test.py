@@ -46,6 +46,8 @@ print(controller.client({
     "args":[0.5]
     }))
 
+exit()
+
 # Start playing a video
 print(controller.client({
     "device":"Bedroom TV",

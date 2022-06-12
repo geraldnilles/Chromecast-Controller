@@ -105,94 +105,18 @@ def check_status(conn,cast,args):
     rc.update_status(cb_fun)
     return True
 
-"""
-def show(conn,cast,args):
-    # Name of TV Show to start
-    name = args[0]
-    num = args[1]
-    rc = self.device.socket_client.receiver_controller
-
-
-    # If status is not set, abort and let the user try again
-    # This is done to avoid an error while we wait for the system to recover
-    # Idealy, id use the status callback function to send the show when ready
-    if rc.status == None:
-        logging.warning("Status Not Set.  Bailing")
-        self.check_status()
-        return
-        
-    # If Backdrop is the current app, the TV is likely off.  Temporarily
-    # launch the media reciever in order to wake up the TV before launching
-    # the show
-    if rc.status.app_id == pychromecast.config.APP_BACKDROP:
-        rc.launch_app(pychromecast.config.APP_MEDIA_RECEIVER)
-        time.sleep(15)
-    
-    # Quit the current app before starting the show
-    self.device.quit_app()
-    time.sleep(5)
-
-    logging.info("Playing "+ str(name))
-    mc = self.device.media_controller
-
-    # Get the aboslute path
-    lib_path = os.path.abspath(
-        # Jump back 1 directory and into the selcted show folder
-        os.path.join(
-            # Strip out the basename
-            os.path.dirname(
-                # Path of current file
-                os.path.abspath(__file__)
-            )
-        ,"..","library",name )
-        )
-    try:
-        eps = sorted(os.listdir(lib_path))
-    except:
-        print("Show was not found")
-        eps = []
-
-    # TODO Sort the episodes by name
-
-
-    # If number of library episodes is more than "num", then randomly
-    # select a chunk of sequential episodes
-    if len(eps) > num:
-        i = random.randrange(len(eps)-num+1)
-        sel = eps[i:i+num]
-    else:
-        #If not, select the entire epsidoe list
-        sel = eps
-
-    # We want the first video to be nromal. and all subsequent videos be
-    # enqueued
-    # TODO Dynamically look up the local IP address
-    enqueue = False
-    for e in sel:
-        if enqueue:
-            logging.info ("Queueing up "+e)
-            mc.play_media("http://"+socket.gethostname()+".lan:8080/library/"+name+"/"+e,
-                            'video/mp4', enqueue=enqueue)
-        else:
-            logging.info ("Starting with "+e)
-            mc.play_media("http://"+socket.gethostname()+".lan:8080/library/"+name+"/"+e,
-                            'video/mp4', enqueue=enqueue)
-            mc.block_until_active(10)
-            enqueue = True
-            time.sleep(2)
-"""
 
 def play(conn,cast,args):
     rc = cast.socket_client.receiver_controller
     mc = cast.media_controller
-    if len(args > 0:
+    if len(args) > 0:
         url = args[0]
         logging.info("Playing a video:",url)
     else:
         logging.error("Invalid Command: URL not provided")
         sendMsg(conn,"OK")
         
-    if len(args > 1):
+    if len(args) > 1:
         mime = args[1]
     else:
         mime = "video/mp4"
@@ -218,7 +142,7 @@ def stop(conn,cast,args):
 
 def parse_command(conn,msg):
 
-    if "command" not in msg:
+    if "cmd" not in msg:
         logging.error("No Command Provided")
         sendMsg(conn,"Error: No Command Provided")
         return
@@ -227,7 +151,7 @@ def parse_command(conn,msg):
     # If a device name was provided, make sure it is included in the cache
     if "device" in msg:
         if msg["device"] in DEVICE_CACHE:
-            cast = pychromecast.get_chromecast_from_host(DEVICE_CACHE[device_name])
+            cast = pychromecast.get_chromecast_from_host(DEVICE_CACHE[msg["device"]])
             cast.wait()
         else:
             logging.error("Requested Device Not Found")
@@ -238,7 +162,7 @@ def parse_command(conn,msg):
         cast = None
 
     # Run the appropriate function
-    if msg["command"] not in Commands:
+    if msg["cmd"] not in Command.__members__.values():
         logging.error("Invalid Command")
         sendMsg(conn,"Error: Invalid Command")
         return
@@ -246,10 +170,12 @@ def parse_command(conn,msg):
         args = []
         if "args" in msg:
             args = msg["args"]
-        wait = FunctionMap.table[msg["command"]](conn,cast,args) 
+        wait = FunctionMap.table[msg["cmd"]](conn,cast,args) 
 
     # If 'wait' is set, wait for all the callbacks to finish before continuing
     if wait:
+        if cast == None:
+            return
         while len(cast.socket_client._request_callbacks.values()) > 0:
             next(iter(cast.socket_client._request_callbacks.values()))["event"].wait()
             # Wait a extra beat for socket responses
@@ -259,6 +185,11 @@ def parse_command(conn,msg):
     else:
         # If wait is not set, respond with a generic "OK" without waiting
         sendMsg(conn,"OK")
+
+def reset(conn, cast, args):
+    sendMsg(conn,"OK")
+    exit(1)
+    
 
 def list_devices(conn,cast,args):
     """
@@ -351,7 +282,7 @@ class FunctionMap:
     table[Command.play] = play
     table[Command.stop] = stop
     table[Command.skip] = skip
-    table[Command.status] = status
+    table[Command.status] = check_status
     table[Command.volume] = volume
     table[Command.reset] = reset
     table[Command.find_devs] = find_devices
