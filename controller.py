@@ -85,7 +85,7 @@ def skip(conn,cast,args):
 
     # This call back will get the inital volume level
     def cb_init(status):
-        logging.debug("Video position initially at "+str(cc.status.current_time))
+        logging.debug("Video position initially at "+str(mc.status.current_time))
         prev = mc.status.current_time
         delta_time = args[0]
 
@@ -132,7 +132,7 @@ def play(conn,cast,args):
         logging.debug("Playback Request Complete")
         sendMsg(conn,"OK")
 
-    mc.play_media(url,mime, callback_function=cb_fun )
+    mc.play_media(url,mime, enqueue=enqueue, callback_function=cb_fun )
     return True
 
 

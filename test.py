@@ -7,6 +7,14 @@ print(controller.client({
     "cmd":cmds.list_devs
     }))
 
+print(controller.client({
+    "device":"Bedroom TV",
+    "cmd":cmds.volume,
+    "args":[0.5]
+    }))
+
+time.sleep(5)
+
 # Get Device status 3 times and time how long it takes
 for x in range(3):
     a=time.time()
@@ -46,15 +54,12 @@ print(controller.client({
     "args":[0.5]
     }))
 
-exit()
-
 # Start playing a video
 print(controller.client({
     "device":"Bedroom TV",
     "cmd":cmds.play,
     "args":["http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4","video/mp4"]
     }))
-
 
 # And Queue up a 2nd video
 print(controller.client({
