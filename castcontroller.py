@@ -68,9 +68,10 @@ def queue_next(conn,cast,args):
 
     def cb_func(status):
         mc.queue_next()
-        print(mc.status)
-        conn.sendMsg("OK")
+        sendMsg(conn,"OK")
 
+    # You need to update the status before you are allowed to request a queue
+    # skip
     mc.update_status(cb_func)
     return True
 
@@ -83,9 +84,10 @@ def queue_prev(conn,cast,args):
 
     def cb_func(status):
         mc.queue_prev()
-        print(mc.status)
-        conn.sendMsg("OK")
+        sendMsg(conn,"OK")
 
+    # You need to update the status before you are allowed to request a queue
+    # skip
     mc.update_status(cb_func)
     return True
 
