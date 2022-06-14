@@ -247,10 +247,19 @@ def find_devices(conn=None,cast=None,args=None):
     parse_command() function
     """
 
+    # By default, we will use the cached Avahi data. However, one can force a
+    # refresh by adding "True" to the args list
+    if args and len(args) > 0 and args[0] == True:
+        # Refresh the list of devices
+        cmd = ["find_chromecasts"]
+    else:
+        # By Default, use the cached avahi list
+        cmd = ["find_chromecasts", "-c"]
+
     # Use the script from my "discovery" package to utilize the already-running
     # Avahi daemon to find devices rather than use the python Zeroconf library
     # (which is problematic)
-    for line in subprocess.check_output(["find_chromecasts"]).decode("utf-8").split("\n"):
+    for line in subprocess.check_output(cmd).decode("utf-8").split("\n"):
         if len(line) < 2:
             continue
         ip_address,name = line.split(":")
