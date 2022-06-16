@@ -347,8 +347,6 @@ if __name__ == "__main__":
     import pychromecast
 
     import time
-    import os
-    import random
     import logging
     import subprocess
     logging.basicConfig(format='%(asctime)s : %(levelname)s : %(message)s', level=logging.INFO)
