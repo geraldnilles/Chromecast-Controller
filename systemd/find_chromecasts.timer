@@ -1,0 +1,10 @@
+[Unit]
+Description=Periodic Timer to refresh the Avahi Cache of Chromecast devices
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=10min
+
+[Install]
+WantedBy=timers.target
+

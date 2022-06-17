@@ -1,0 +1,7 @@
+[Unit]
+Description=Use Avahi to refresh the Avahi cache
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/find_chromecasts
+
