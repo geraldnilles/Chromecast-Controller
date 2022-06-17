@@ -286,7 +286,7 @@ def server(fd):
 
     # Server will stop itself after 10s of inactivity
     s = socket.socket(fileno=fd)
-    s.settimeout(10)
+    s.settimeout(30)
 
     try:
         while True:
