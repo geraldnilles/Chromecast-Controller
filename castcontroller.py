@@ -267,6 +267,11 @@ def find_devices(conn=None,cast=None,args=None):
         logging.debug(ip_address, name)
 
         info = pychromecast.dial.get_device_info(ip_address)
+
+        # Only cache valid devices
+        if info == None:
+            continue
+
         host = (ip_address, None, info.uuid, info.model_name, info.friendly_name)
 
         # For now, we will only store the "host" tuple in the cache. This will
