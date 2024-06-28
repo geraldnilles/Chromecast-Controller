@@ -212,18 +212,21 @@ def parse_command(conn,msg):
         wait = FunctionMap.table[msg["cmd"]](conn,cast,args) 
 
     # If 'wait' is set, wait for all the callbacks to finish before continuing
-    if wait:
-        if cast == None:
-            return
-        while len(cast.socket_client._request_callbacks.values()) > 0:
-            next(iter(cast.socket_client._request_callbacks.values()))["event"].wait()
+    if wait and cast is not None:
+        while cast.socket_client._request_callbacks:
+            # Get the first callback in the dictionary
+            first_callback = next(iter(cast.socket_client._request_callbacks.values()))
+            if isinstance(first_callback, dict) and "event" in first_callback:
+                first_callback["event"].wait()
+            else:
+                # If the structure is different, log it and break to avoid an infinite loop
+                logging.error("Unexpected callback structure")
+                break
             # Wait a extra beat for socket responses
-            # TODO See if this can be removed with the new socket activation architecture
             time.sleep(0.1)
-
     else:
         # If wait is not set, respond with a generic "OK" without waiting
-        sendMsg(conn,"OK")
+        sendMsg(conn, "OK")
 
 def reset(conn, cast, args):
     sendMsg(conn,"OK")
