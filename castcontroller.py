@@ -4,6 +4,8 @@ import socket
 import struct
 import json
 from enum import IntEnum, auto
+import logging
+logging.basicConfig(format='%(asctime)s : %(levelname)s : %(message)s', level=logging.INFO)
 
 
 # Local cache of Chromecast devices.  THis should mitigate the need to
@@ -55,9 +57,9 @@ def volume(conn,cast,args):
             level = level/100.0
         
         rc.set_volume(level)
-        rc.update_status(cb_done)
+        rc.update_status(callback_function = cb_done)
 
-    rc.update_status(cb_init)
+    rc.update_status(callback_function = cb_init)
     return True
 
 def queue_next(conn,cast,args):
@@ -73,7 +75,7 @@ def queue_next(conn,cast,args):
 
     # You need to update the status before you are allowed to request a queue
     # skip
-    mc.update_status(cb_func)
+    mc.update_status(callback_function = cb_func)
     return True
 
 def queue_prev(conn,cast,args):
@@ -89,7 +91,7 @@ def queue_prev(conn,cast,args):
 
     # You need to update the status before you are allowed to request a queue
     # skip
-    mc.update_status(cb_func)
+    mc.update_status(callback_function = cb_func)
     return True
 
 def skip(conn,cast,args):
@@ -109,9 +111,9 @@ def skip(conn,cast,args):
         delta_time = args[0]
 
         mc.seek(prev+delta_time)
-        mc.update_status(cb_done)
+        mc.update_status(callback_function = cb_done)
 
-    mc.update_status(cb_init)
+    mc.update_status(callback_function = cb_init)
     return True
 
 def seek(conn,cast,args):
@@ -129,9 +131,9 @@ def seek(conn,cast,args):
         logging.debug("Video position initially at "+str(mc.status.current_time))
 
         mc.seek(args[0])
-        mc.update_status(cb_done)
+        mc.update_status(callback_function = cb_done)
 
-    mc.update_status(cb_init)
+    mc.update_status(callback_function = cb_init)
     return True
 
 def check_status(conn,cast,args):
@@ -141,7 +143,7 @@ def check_status(conn,cast,args):
         logging.info("Current App: " + repr(rc.status.app_id))
         logging.debug("Chromecast Status: " + repr(rc.status))
         sendMsg(conn,rc.status.app_id)
-    rc.update_status(cb_fun)
+    rc.update_status(callback_function = cb_fun)
     return True
 
 
@@ -392,9 +394,7 @@ if __name__ == "__main__":
     import pychromecast
 
     import time
-    import logging
     import subprocess
-    logging.basicConfig(format='%(asctime)s : %(levelname)s : %(message)s', level=logging.INFO)
 
     # Check for the Systemd Socket fileno and start a server if one exists
     from systemd.daemon import listen_fds
