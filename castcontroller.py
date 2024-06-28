@@ -32,34 +32,25 @@ def volume(conn,cast,args):
     logging.info("Adjusting Volume")
     rc = cast.socket_client.receiver_controller
 
+    level = args[0]
+
     # THis callback will repot the final volume level
     def cb_done(status,error):
         logging.debug("Volume now set to "+str(rc.status.volume_level))
         sendMsg(conn,rc.status.volume_level)
 
-    # This call back will get the inital volume level
-    def cb_init(status,error):
-        logging.debug("Volume initially set to to "+str(rc.status.volume_level))
-        prev = rc.status.volume_level
-        level = args[0]
-
-        # Special Cases: 1 will be mean step volume down 5%.  
-        #                2 will mean volume up 5%
-        #                Anything else will be interpreted as a percentage (0 to 100)
-
-        if (level == 1):
-            # Down 5%
-            level = prev - 0.05
-        elif (level == 2):
-            # Up 5%
-            level = prev + 0.05
-        else:
-            level = level/100.0
+    prev = rc.status.volume_level
+    if (level == 1):
+        # Down 5%
+        level = prev - 0.05
+    elif (level == 2):
+        # Up 5%
+        level = prev + 0.05
+    else:
+        level = level/100.0
         
-        rc.set_volume(level)
-        #rc.update_status(callback_function = cb_done)
-
-    rc.update_status(callback_function = cb_init)
+    rc.set_volume(level)
+    rc.update_status(callback_function = cb_done)
     return True
 
 def queue_next(conn,cast,args):
