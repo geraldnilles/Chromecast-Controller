@@ -57,7 +57,7 @@ def volume(conn,cast,args):
             level = level/100.0
         
         rc.set_volume(level)
-        rc.update_status(callback_function = cb_done)
+        #rc.update_status(callback_function = cb_done)
 
     rc.update_status(callback_function = cb_init)
     return True
@@ -215,14 +215,25 @@ def parse_command(conn,msg):
 
     # If 'wait' is set, wait for all the callbacks to finish before continuing
     if wait and cast is not None:
+        cast.wait()
+        return
+
+        #for key,value in cast.socket_client._request_callbacks.items():
         while cast.socket_client._request_callbacks:
+            key, value = cast.socket_client._request_callbacks.popitem()
+            logging.info("Callback: "+str(value))
+            logging.info("Key: "+str(key))
             # Get the first callback in the dictionary
-            first_callback = next(iter(cast.socket_client._request_callbacks.values()))
-            if isinstance(first_callback, dict) and "event" in first_callback:
-                first_callback["event"].wait()
+            if isinstance(value, dict) and "event" in value:
+                logging.info("Dict Event")
+                value["event"].wait()
+            # If it is a function, then call it directly
+            elif callable(value):
+                logging.info("Callable")
+                value(True,None)
             else:
                 # If the structure is different, log it and break to avoid an infinite loop
-                logging.error("Unexpected callback structure")
+                logging.error("Unexpected callback structure: "+str(value))
                 break
             # Wait a extra beat for socket responses
             time.sleep(0.1)
