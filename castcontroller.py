@@ -33,12 +33,12 @@ def volume(conn,cast,args):
     rc = cast.socket_client.receiver_controller
 
     # THis callback will repot the final volume level
-    def cb_done(status):
+    def cb_done(status,error):
         logging.debug("Volume now set to "+str(rc.status.volume_level))
         sendMsg(conn,rc.status.volume_level)
 
     # This call back will get the inital volume level
-    def cb_init(status):
+    def cb_init(status,error):
         logging.debug("Volume initially set to to "+str(rc.status.volume_level))
         prev = rc.status.volume_level
         level = args[0]
@@ -100,12 +100,12 @@ def skip(conn,cast,args):
     mc = cast.media_controller
     
     # THis callback will repot the final volume level
-    def cb_done(status):
+    def cb_done(status,error):
         logging.debug("Video position now at "+str(mc.status.current_time))
         sendMsg(conn,mc.status.current_time)
 
     # This call back will get the inital volume level
-    def cb_init(status):
+    def cb_init(status,error):
         logging.debug("Video position initially at "+str(mc.status.current_time))
         prev = mc.status.current_time
         delta_time = args[0]
@@ -122,12 +122,12 @@ def seek(conn,cast,args):
     mc = cast.media_controller
     
     # THis callback will repot the final volume level
-    def cb_done(status):
+    def cb_done(status,error):
         logging.debug("Video position now at "+str(mc.status.current_time))
         sendMsg(conn,mc.status.current_time)
 
     # This call back will get the inital volume level
-    def cb_init(status):
+    def cb_init(status,error):
         logging.debug("Video position initially at "+str(mc.status.current_time))
 
         mc.seek(args[0])
