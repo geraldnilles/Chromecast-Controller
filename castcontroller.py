@@ -67,7 +67,7 @@ def queue_next(conn,cast,args):
     logging.info("Jumping to Next Video")
     mc = cast.media_controller
 
-    def cb_func(status):
+    def cb_func(status,error):
         mc.queue_next()
         sendMsg(conn,"OK")
 
@@ -83,7 +83,7 @@ def queue_prev(conn,cast,args):
     logging.info("Jumping to Previous Video")
     mc = cast.media_controller
 
-    def cb_func(status):
+    def cb_func(status,error):
         mc.queue_prev()
         sendMsg(conn,"OK")
 
@@ -137,7 +137,7 @@ def seek(conn,cast,args):
 def check_status(conn,cast,args):
     logging.info("Checking Status")
     rc = cast.socket_client.receiver_controller
-    def cb_fun(status):
+    def cb_fun(status,error):
         logging.info("Current App: " + repr(rc.status.app_id))
         logging.debug("Chromecast Status: " + repr(rc.status))
         sendMsg(conn,rc.status.app_id)
@@ -167,7 +167,7 @@ def play(conn,cast,args):
     else:
         enqueue = False
 
-    def cb_fun(status):
+    def cb_fun(status,error):
         logging.debug("Playback Request Complete")
         sendMsg(conn,"OK")
 
@@ -316,17 +316,54 @@ def client(obj):
     # TODO Close or detach?
     return resp
 
-def recvMsg(conn):
-    # Header is fixed 4 bytes
-    header = conn.recv(4)
-    msg_size = struct.unpack(">I",header)[0]
-    body = conn.recv(msg_size)
-    return json.loads(body)
+def recvall(conn, n):
+    """Helper function to recv n bytes or return None if EOF is hit"""
+    data = bytearray()
+    while len(data) < n:
+        packet = conn.recv(n - len(data))
+        if not packet:
+            return None
+        data.extend(packet)
+    return data
 
-def sendMsg(conn,obj):
-    body = bytes(json.dumps(obj),"utf-8")
-    header = struct.pack(">I",len(body))
-    conn.sendall(header+body)
+def recvMsg(conn):
+    try:
+        # Header is fixed 4 bytes
+        header = recvall(conn, 4)
+        if not header:
+            logging.error("Connection closed while receiving header")
+            return None
+        msg_size = struct.unpack(">I", header)[0]
+        body = recvall(conn, msg_size)
+        if not body:
+            logging.error("Connection closed while receiving body")
+            return None
+        return json.loads(body.decode('utf-8'))
+    except json.JSONDecodeError as e:
+        logging.error(f"JSON decode error: {e}")
+        return None
+    except struct.error as e:
+        logging.error(f"Struct unpack error: {e}")
+        return None
+    except Exception as e:
+        logging.error(f"Unexpected error in recvMsg: {e}")
+        return None
+
+def sendMsg(conn, obj):
+    try:
+        body = json.dumps(obj).encode('utf-8')
+        header = struct.pack(">I", len(body))
+        conn.sendall(header + body)
+        return True
+    except json.JSONEncodeError as e:
+        logging.error(f"JSON encode error: {e}")
+        return False
+    except struct.error as e:
+        logging.error(f"Struct pack error: {e}")
+        return False
+    except Exception as e:
+        logging.error(f"Unexpected error in sendMsg: {e}")
+        return False
 
 def sendRecvMsg(conn,obj):
     sendMsg(conn,obj)
