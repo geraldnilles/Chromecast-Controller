@@ -12,6 +12,10 @@ logging.basicConfig(format='%(asctime)s : %(levelname)s : %(message)s', level=lo
 # re-discover devices every time a command is sent 
 DEVICE_CACHE = {}
 
+# Sentinel returned by handlers that send their own response.
+# parse_command() uses it to avoid sending a second, spurious "OK".
+HANDLED = object()
+
 # Socket Path.  This will be manaaged by a Systemd socket unit
 UNIX_SOCKET_PATH = "/run/chromecast.socket"
 
@@ -174,7 +178,9 @@ def stop(conn,cast,args):
 
 def parse_command(conn,msg):
 
-    if "cmd" not in msg:
+    # recvMsg() can hand us None (client hung up) or a non-dict payload.
+    # Treat both as a bad request instead of crashing on "cmd" not in msg.
+    if not isinstance(msg, dict) or "cmd" not in msg:
         logging.error("No Command Provided")
         sendMsg(conn,"Error: No Command Provided")
         return
@@ -203,6 +209,10 @@ def parse_command(conn,msg):
         if "args" in msg:
             args = msg["args"]
         wait = FunctionMap.table[msg["cmd"]](conn,cast,args) 
+
+    # The handler already sent its own response; do not send another.
+    if wait is HANDLED:
+        return
 
     # If 'wait' is set, wait for all the callbacks to finish before continuing
     if wait and cast is not None:
@@ -242,8 +252,8 @@ def list_devices(conn,cast,args):
     List devices from the cache without attempting to find new devices
     """
     sendMsg(conn, list(DEVICE_CACHE.keys()))
-    # Return True since this function is generating a custom response.
-    return True
+    # Return HANDLED since this function is generating a custom response.
+    return HANDLED
 
 def find_devices(conn=None,cast=None,args=None):
     """
@@ -296,29 +306,52 @@ def server(fd):
     # Populate the Device Cache with Avahi data
     find_devices()
 
-    # Server will stop itself after 10s of inactivity
+    # Server will stop itself after 30s of inactivity
     s = socket.socket(fileno=fd)
     s.settimeout(30)
 
-    try:
-        while True:
+    while True:
+        # An accept() timeout means the service has been idle -> shut down.
+        # This is the ONLY expected way out of the loop.
+        try:
             conn = s.accept()[0]
+        except TimeoutError:
+            return
+
+        # Bound every exchange so a half-open client (e.g. one that sends a
+        # header then stalls) cannot block this single-threaded server forever.
+        conn.settimeout(30)
+
+        # Handle every request in isolation. A malformed message or a
+        # half-closed client must never be able to take down the server
+        # (which would lock up every future request until a restart).
+        try:
             obj = recvMsg(conn)
-            print(obj)
+            if obj is None:
+                # Client hung up before sending a complete message.
+                logging.error("Empty or incomplete request; ignoring")
+                continue
             logging.debug(repr(obj))
             parse_command(conn,obj)
-
-    except TimeoutError:
-        return
+        except Exception as e:
+            logging.error(f"Error handling request: {e}")
+        finally:
+            try:
+                conn.close()
+            except OSError:
+                pass
 
 def client(obj):
     # Create and connect to a Unix socket
     sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-    sock.connect(UNIX_SOCKET_PATH)
-
-    resp = sendRecvMsg(sock,obj)
-    # TODO Close or detach?
-    return resp
+    sock.settimeout(30)
+    try:
+        sock.connect(UNIX_SOCKET_PATH)
+        return sendRecvMsg(sock,obj)
+    finally:
+        # Always release the connection so the server's later sendall()
+        # does not hit a dead socket (BrokenPipeError).
+        sock.close()
 
 def recvall(conn, n):
     """Helper function to recv n bytes or return None if EOF is hit"""
@@ -359,11 +392,17 @@ def sendMsg(conn, obj):
         header = struct.pack(">I", len(body))
         conn.sendall(header + body)
         return True
-    except json.JSONEncodeError as e:
+    except TypeError as e:
+        # json.dumps() raises TypeError (there is no json.JSONEncodeError)
         logging.error(f"JSON encode error: {e}")
         return False
     except struct.error as e:
         logging.error(f"Struct pack error: {e}")
+        return False
+    except (BrokenPipeError, ConnectionResetError,
+            ConnectionAbortedError, OSError) as e:
+        # The client is gone. This must never crash the server.
+        logging.error(f"Connection error in sendMsg: {e}")
         return False
     except Exception as e:
         logging.error(f"Unexpected error in sendMsg: {e}")
