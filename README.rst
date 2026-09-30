@@ -44,3 +44,37 @@ persistent connections.  I will accomplish by using the following architecture
 
 Other projects on this machien will be able to open a unix socket and send
 commands
+
+Commands
+========
+
+Clients talk to the daemon over the systemd socket and send a JSON object::
+
+    {"device": "<friendly name>", "cmd": <Command>, "args": [...]}
+
+The ``cmd`` value is a member of ``castcontroller.Command`` (an ``IntEnum``,
+so it serialises as an integer on the wire).
+
+Per-episode playback
+--------------------
+
+``play`` (``args = [url, mime, enqueue]``) loads or enqueues a *single*
+episode.  Enqueueing requires an already-active media session, because the
+``QUEUE_INSERT`` message carries the ``mediaSessionId``.  When
+``enqueue=True`` the handler therefore waits for the session to become active
+before sending the command.  Note that each command gets its own connection,
+so a session created by an earlier command is **not** visible to the next one.
+
+Whole-show playback
+-------------------
+
+``play_show`` (``args = [[url1, url2, ...], mime]``) plays an ordered list of
+episodes as a single continuous queue.  It uses ONE connection to:
+
+  1. ``LOAD`` the first url (this starts the media receiver / session),
+  2. wait until the media session is active,
+  3. ``QUEUE_INSERT`` (``enqueue=True``) each remaining url.
+
+This is the command the Episode Player webapp uses, and it avoids the
+per-episode reconnect race where every enqueue after the first was dropped
+(``mediaSessionId`` was ``null``).

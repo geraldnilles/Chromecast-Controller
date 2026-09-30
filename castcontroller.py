@@ -3,6 +3,7 @@
 import socket
 import struct
 import json
+import time
 from enum import IntEnum, auto
 import logging
 logging.basicConfig(format='%(asctime)s : %(levelname)s : %(message)s', level=logging.INFO)
@@ -31,6 +32,7 @@ class Command(IntEnum):
     list_devs = auto()
     queue_next = auto()
     queue_prev = auto()
+    play_show = auto()
 
 def volume(conn,cast,args):
     logging.info("Adjusting Volume")
@@ -164,12 +166,86 @@ def play(conn,cast,args):
     else:
         enqueue = False
 
+    # Enqueueing (QUEUE_INSERT) requires an *active media session*: the message
+    # embeds the current mediaSessionId, which is None until the receiver has
+    # told us about the session. cast.wait() only waits for the receiver status,
+    # NOT the media status, so on a freshly-created connection the session id is
+    # still None here.  If we enqueue now, the receiver silently drops the
+    # message (mediaSessionId=null) and the episode never plays.  Wait for the
+    # session to come up first.
+    if enqueue and not _media_session_ready(mc):
+        logging.warning("Queueing requested but no media session is active")
+
     def cb_fun(status,error):
         logging.debug("Playback Request Complete")
         sendMsg(conn,"OK")
 
     mc.play_media(url,mime, enqueue=enqueue, callback_function=cb_fun )
     return True
+
+
+def _media_session_ready(mc, timeout=10):
+    """Block until an active media session exists; return True if it is ready.
+
+    QUEUE_INSERT messages carry the mediaSessionId, so the session must exist
+    before an enqueue is sent.  block_until_active() waits on the media
+    controller's session_active_event, which is set once a MEDIA_STATUS with a
+    non-None mediaSessionId has been received.
+    """
+    try:
+        mc.block_until_active(timeout=timeout)
+    except AttributeError:
+        # Very old pychromecast without block_until_active(): best effort via a
+        # direct status refresh, then a short settle.
+        logging.warning("MediaController.block_until_active unavailable")
+        mc.update_status()
+        time.sleep(1)
+    return mc.status is not None and mc.status.media_session_id is not None
+
+
+def play_show(conn,cast,args):
+    """
+    Play an ordered list of episodes as a single gapless queue.
+
+    args = [ [url1, url2, ...], mime ]
+
+    Everything is done on ONE Chromecast connection:
+      * url[0] is LOADed (this starts the media receiver and creates the
+        media session),
+      * we wait for that session to become active,
+      * the remaining urls are appended with enqueue=True (QUEUE_INSERT).
+
+    This mirrors the original, working implementation and avoids the per-
+    episode reconnect race that caused only the first episode to play.
+    """
+    mc = cast.media_controller
+
+    if not args or not args[0]:
+        logging.error("Invalid Command: no URLs provided")
+        sendMsg(conn, "Error: No URLs provided")
+        return HANDLED
+
+    urls = args[0]
+    mime = args[1] if len(args) > 1 else "video/mp4"
+
+    logging.info("Playing a show of %d episode(s)" % len(urls))
+
+    # First episode: normal LOAD so the receiver starts and a session is made.
+    logging.info("Starting with " + urls[0])
+    mc.play_media(urls[0], mime)
+
+    # The rest can only be queued once the media session is live.
+    if not _media_session_ready(mc):
+        logging.error("Media session never became active; cannot queue episodes")
+        sendMsg(conn, "Error: Could not start media session")
+        return HANDLED
+
+    for url in urls[1:]:
+        logging.info("Queueing up " + url)
+        mc.play_media(url, mime, enqueue=True)
+
+    sendMsg(conn, "OK")
+    return HANDLED
 
 
 def stop(conn,cast,args):
@@ -426,6 +502,7 @@ class FunctionMap:
     table[Command.list_devs] = list_devices
     table[Command.queue_next] = queue_next 
     table[Command.queue_prev] = queue_prev
+    table[Command.play_show] = play_show
 
 if __name__ == "__main__":
     # Most of these are only needed by the server so importing is done in the
